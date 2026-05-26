@@ -155,9 +155,10 @@ def main():
     # ============ 配置目标公众号 ============
     # 方式1：直接填 fakeid（从 search_account 获取）
     # 方式2：填公众号名称，脚本会自动搜索
+    # 请替换为你自己的公众号名称和 fakeid
+    # fakeid 可通过 search_account 获取
     accounts = {
-        "胡说八道": "MzAwNTM4NTQ5OQ==",  # crazysayings
-        "一舟叟": "MzI2NTA2MDU5OA==",
+        # "示例公众号": "MzAwNTM4NTQ5OQ==",
     }
     # ========================================
 
