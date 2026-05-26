@@ -61,12 +61,12 @@ def run_skill(action, **kwargs):
     return {"ok": False, "raw": result.stdout[:300]}
 
 
-def list_all_articles(fakeid, max_total=30):
-    """获取公众号文章列表（自动翻页）"""
+def list_all_articles(fakeid, max_total=0):
+    """获取公众号文章列表（自动翻页，max_total=0 表示获取全部）"""
     all_articles = []
     begin = 0
     size = 20
-    while len(all_articles) < max_total:
+    while True:
         print(f"  获取文章列表 begin={begin}...", flush=True)
         result = run_skill("list_articles", fakeid=fakeid, begin=begin, size=size)
         if not result.get("ok"):
@@ -79,9 +79,13 @@ def list_all_articles(fakeid, max_total=30):
         print(f"  ✅ 获取到 {len(articles)} 篇，累计 {len(all_articles)} 篇", flush=True)
         if len(articles) < size:
             break
+        if max_total > 0 and len(all_articles) >= max_total:
+            break
         begin += size
         time.sleep(1)
-    return all_articles[:max_total]
+    if max_total > 0:
+        return all_articles[:max_total]
+    return all_articles
 
 
 def extract_text_from_html(html_content):
@@ -167,7 +171,7 @@ def main():
         print(f"📡 【{name}】获取文章列表...", flush=True)
         print(f"{'='*60}", flush=True)
 
-        articles = list_all_articles(fakeid, max_total=30)
+        articles = list_all_articles(fakeid)
 
         if not articles:
             print(f"⚠️ 未获取到文章，跳过", flush=True)
@@ -183,12 +187,36 @@ def main():
         os.makedirs(article_dir, exist_ok=True)
 
         all_contents = []
+        skipped = 0
         for i, article in enumerate(articles):
             title = article.get("title", f"unknown_{i}")
             link = article.get("link", "")
             digest = article.get("digest", "")
             create_time = article.get("create_time", 0)
             author = article.get("author_name", name)
+
+            # 增量下载：跳过已存在的文件
+            fname = safe_filename(title) + ".txt"
+            fpath = os.path.join(article_dir, fname)
+            if os.path.exists(fpath) and os.path.getsize(fpath) > 50:
+                with open(fpath, 'r', encoding='utf-8') as f:
+                    existing = f.read()
+                # 从已有文件提取正文（跳过头部元信息）
+                parts = existing.split('\n\n', 1)
+                content = parts[1] if len(parts) > 1 else existing
+                skipped += 1
+                if skipped <= 3 or (i + 1) == len(articles):
+                    print(f"  [{i+1}/{len(articles)}] ⏩ 跳过（已下载）: {title}", flush=True)
+                article_data = {
+                    "title": title,
+                    "link": link,
+                    "digest": digest,
+                    "content": content,
+                    "create_time": create_time,
+                    "author": author,
+                }
+                all_contents.append(article_data)
+                continue
 
             print(f"\n  [{i+1}/{len(articles)}] {title}", flush=True)
 
