@@ -18,6 +18,7 @@ const ACTIONS = [
   'add_account_sync',
   'list_articles_with_credential',
   'download_article',
+  'batch_download',
   'get_comments',
   'get_album',
   'get_authorinfo_beta',
@@ -93,6 +94,13 @@ const actionInputSchemas = {
   download_article: z.object({
     url: z.string().min(1, 'url 不能为空'),
     format: z.enum(['html', 'markdown', 'text', 'json']).default('html'),
+  }),
+  batch_download: z.object({
+    fakeid: z.string().min(1, 'fakeid 不能为空'),
+    format: z.enum(['html', 'markdown', 'text', 'json']).default('text'),
+    max_total: z.coerce.number().int().min(0).default(0),
+    size: z.coerce.number().int().min(1).max(20).default(20),
+    delay_ms: z.coerce.number().int().min(0).max(10000).default(2000),
   }),
   get_comments: z.object({
     __biz: z.string().min(1, '__biz 不能为空'),
@@ -468,6 +476,111 @@ function createSkillHandler(options = {}) {
         });
 
         return output;
+      }
+      case 'batch_download': {
+        assertAuthKey(config);
+
+        const allArticles = [];
+        let begin = 0;
+
+        while (true) {
+          const listResp = await callApi({
+            config,
+            context,
+            path: '/api/public/v1/article',
+            method: 'GET',
+            query: {
+              fakeid: actionInput.fakeid,
+              begin: begin,
+              size: actionInput.size,
+              keyword: '',
+            },
+            expect: 'json',
+            authRequired: true,
+          });
+
+          const pageArticles = Array.isArray(listResp.data?.articles) ? listResp.data.articles : [];
+          if (pageArticles.length === 0) break;
+
+          allArticles.push(...pageArticles);
+
+          const msgCount = getMessageCount(pageArticles);
+          if (msgCount <= 0 || pageArticles.length < actionInput.size) break;
+          if (actionInput.max_total > 0 && allArticles.length >= actionInput.max_total) break;
+
+          begin += msgCount;
+        }
+
+        const targetArticles = actionInput.max_total > 0 ? allArticles.slice(0, actionInput.max_total) : allArticles;
+
+        let totalDownloaded = 0;
+        let totalFailed = 0;
+        const results = [];
+
+        for (let i = 0; i < targetArticles.length; i++) {
+          const article = targetArticles[i];
+          const title = article?.title || `article_${i}`;
+          const link = article?.link || '';
+
+          if (!link) {
+            totalFailed += 1;
+            results.push({ title, status: 'skipped', reason: 'no_link' });
+            continue;
+          }
+
+          if (i > 0 && actionInput.delay_ms > 0) {
+            await sleep(actionInput.delay_ms);
+          }
+
+          try {
+            assertWechatUrl(link);
+
+            const dlResp = await callApi({
+              config,
+              context,
+              path: '/api/public/v1/download',
+              method: 'GET',
+              query: {
+                url: link,
+                format: actionInput.format,
+              },
+              expect: actionInput.format === 'json' ? 'json' : 'text',
+            });
+
+            const output = await writeDownloadOutput({
+              format: actionInput.format,
+              url: link,
+              payload: dlResp.data,
+              projectRoot,
+              now,
+            });
+
+            totalDownloaded += 1;
+            results.push({
+              title,
+              status: 'success',
+              absolute_path: output.absolute_path,
+              size_bytes: output.size_bytes,
+            });
+          } catch (err) {
+            totalFailed += 1;
+            results.push({
+              title,
+              status: 'failed',
+              reason: err.message || String(err),
+            });
+          }
+        }
+
+        return {
+          fakeid: actionInput.fakeid,
+          format: actionInput.format,
+          total_found: allArticles.length,
+          total_downloaded: totalDownloaded,
+          total_failed: totalFailed,
+          results,
+          summary: `批量下载完成：找到 ${allArticles.length} 篇文章，成功下载 ${totalDownloaded} 篇，失败 ${totalFailed} 篇`,
+        };
       }
       case 'get_comments': {
         const resp = await callApi({

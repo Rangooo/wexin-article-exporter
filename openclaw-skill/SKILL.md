@@ -37,6 +37,7 @@
   - `list_articles_with_credential` (`fakeid`, `uin`, `key`, `pass_ticket`, `begin?`, `size?`)
 - 下载导出：
   - `download_article` (`url`, `format?=html`)
+  - `batch_download` (`fakeid`, `format?=text`, `max_total?=0`, `size?=20`, `delay_ms?=2000`)（批量下载公众号全部文章）
 - 扩展能力：
   - `get_comments` (`__biz`, `comment_id`, `uin`, `key`, `pass_ticket`)
   - `get_album` (`fakeid`, `album_id`, `is_reverse?`, `count?`, `begin_msgid?`, `begin_itemidx?`)

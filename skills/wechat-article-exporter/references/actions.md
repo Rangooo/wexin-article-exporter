@@ -49,6 +49,10 @@ node scripts/wechat-exporter-skill.cjs --json '<JSON>'
   - required: `url`
   - optional: `format=html`（`html|markdown|text|json`）
   - output: `absolute_path`, `size_bytes`, `format`, `summary`
+- `batch_download`
+  - required: `fakeid`
+  - optional: `format=text`（`html|markdown|text|json`）, `max_total=0`（0=全部）, `size=20`（每页条数）, `delay_ms=2000`（下载间隔毫秒）
+  - output: `total_found`, `total_downloaded`, `total_failed`, `results[]`, `summary`
 
 ## 扩展能力
 

@@ -95,6 +95,7 @@ node {baseDir}/scripts/wechat-exporter-skill.cjs --json '<JSON>'
   - `list_articles_with_credential`
 - 下载导出：
   - `download_article`
+  - `batch_download`
 - 扩展能力：
   - `get_comments`
   - `get_album`
@@ -113,6 +114,7 @@ node {baseDir}/scripts/wechat-exporter-skill.cjs --json '{"action":"add_account_
 node {baseDir}/scripts/wechat-exporter-skill.cjs --json '{"action":"add_account_sync","fakeid":"MTEzMzIzODIyMQ==","begin":0,"size":5,"max_pages":1}'
 node {baseDir}/scripts/wechat-exporter-skill.cjs --json '{"action":"search_account","keyword":"人民日报","begin":0,"size":5}'
 node {baseDir}/scripts/wechat-exporter-skill.cjs --json '{"action":"download_article","url":"https://mp.weixin.qq.com/s/xxxx","format":"markdown"}'
+node {baseDir}/scripts/wechat-exporter-skill.cjs --json '{"action":"batch_download","fakeid":"MTEzMzIzODIyMQ==","format":"text","max_total":0,"delay_ms":2000}'
 ```
 
 导出文件会写入：

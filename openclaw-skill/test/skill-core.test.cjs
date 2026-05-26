@@ -29,7 +29,8 @@ test('returns validation error for invalid inputs', async () => {
   await withTempRoot(async tempRoot => {
     const handler = createSkillHandler({
       projectRoot: tempRoot,
-      fetch: async () => new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } }),
+      fetch: async () =>
+        new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } }),
     });
 
     const result = await handler({ action: 'search_account' }, createMockContext({ OPENCLAW_AUTH_KEY: 'abc' }));
@@ -42,7 +43,8 @@ test('returns missing auth key for protected actions', async () => {
   await withTempRoot(async tempRoot => {
     const handler = createSkillHandler({
       projectRoot: tempRoot,
-      fetch: async () => new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } }),
+      fetch: async () =>
+        new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } }),
     });
 
     const result = await handler(
@@ -184,7 +186,9 @@ test('persists cookie jar across handler restarts for login flow', async () => {
       }
       if (String(url).includes('/api/web/login/getqrcode')) {
         const cookieHeader =
-          typeof init.headers?.get === 'function' ? init.headers.get('Cookie') || '' : String(init.headers?.Cookie || '');
+          typeof init.headers?.get === 'function'
+            ? init.headers.get('Cookie') || ''
+            : String(init.headers?.Cookie || '');
         if (!cookieHeader.includes('uuid=uuid123')) {
           return new Response('missing uuid cookie', { status: 401 });
         }
@@ -340,5 +344,179 @@ test('add_account_sync paginates by message count and aggregates articles', asyn
     assert.equal(result.data.synced_messages, 3);
     assert.equal(result.data.synced_articles, 4);
     assert.equal(result.data.next_begin, 3);
+  });
+});
+
+test('batch_download paginates and downloads all articles', async () => {
+  await withTempRoot(async tempRoot => {
+    const handler = createSkillHandler({
+      projectRoot: tempRoot,
+      now: () => new Date('2026-03-26T10:00:00Z'),
+      spawn: () => {},
+      fetch: async url => {
+        const requestUrl = new URL(String(url));
+        if (requestUrl.pathname === '/api/web/misc/current-ip') {
+          return new Response(JSON.stringify({ ip: '127.0.0.1' }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+        if (requestUrl.pathname === '/api/public/v1/article') {
+          const begin = Number(requestUrl.searchParams.get('begin') || '0');
+          if (begin === 0) {
+            return new Response(
+              JSON.stringify({
+                base_resp: { ret: 0, err_msg: 'ok' },
+                articles: [
+                  { aid: 'a1', itemidx: 1, title: 'First', link: 'https://mp.weixin.qq.com/s/a1' },
+                  { aid: 'a2', itemidx: 1, title: 'Second', link: 'https://mp.weixin.qq.com/s/a2' },
+                ],
+              }),
+              { status: 200, headers: { 'content-type': 'application/json' } }
+            );
+          }
+          return new Response(JSON.stringify({ base_resp: { ret: 0, err_msg: 'ok' }, articles: [] }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+        if (requestUrl.pathname === '/api/public/v1/download') {
+          return new Response('article text content', {
+            status: 200,
+            headers: { 'content-type': 'text/plain; charset=UTF-8' },
+          });
+        }
+        return new Response('not found', { status: 404 });
+      },
+    });
+
+    const result = await handler(
+      {
+        action: 'batch_download',
+        fakeid: 'biz-1',
+        format: 'text',
+        delay_ms: 0,
+      },
+      createMockContext({ OPENCLAW_AUTH_KEY: 'k1' })
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(result.data.total_found, 2);
+    assert.equal(result.data.total_downloaded, 2);
+    assert.equal(result.data.total_failed, 0);
+    assert.equal(result.data.results.length, 2);
+    assert.equal(result.data.results[0].title, 'First');
+    assert.equal(result.data.results[0].status, 'success');
+    assert.ok(result.data.results[0].absolute_path.endsWith('.txt'));
+  });
+});
+
+test('batch_download skips articles without links', async () => {
+  await withTempRoot(async tempRoot => {
+    const handler = createSkillHandler({
+      projectRoot: tempRoot,
+      now: () => new Date('2026-03-26T10:00:00Z'),
+      spawn: () => {},
+      fetch: async url => {
+        const requestUrl = new URL(String(url));
+        if (requestUrl.pathname === '/api/web/misc/current-ip') {
+          return new Response(JSON.stringify({ ip: '127.0.0.1' }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+        if (requestUrl.pathname === '/api/public/v1/article') {
+          return new Response(
+            JSON.stringify({
+              base_resp: { ret: 0, err_msg: 'ok' },
+              articles: [
+                { aid: 'a1', itemidx: 1, title: 'Has Link', link: 'https://mp.weixin.qq.com/s/a1' },
+                { aid: 'a2', itemidx: 1, title: 'No Link', link: '' },
+              ],
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } }
+          );
+        }
+        if (requestUrl.pathname === '/api/public/v1/download') {
+          return new Response('content', {
+            status: 200,
+            headers: { 'content-type': 'text/plain; charset=UTF-8' },
+          });
+        }
+        return new Response('not found', { status: 404 });
+      },
+    });
+
+    const result = await handler(
+      {
+        action: 'batch_download',
+        fakeid: 'biz-1',
+        format: 'text',
+        delay_ms: 0,
+      },
+      createMockContext({ OPENCLAW_AUTH_KEY: 'k1' })
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(result.data.total_found, 2);
+    assert.equal(result.data.total_downloaded, 1);
+    assert.equal(result.data.total_failed, 1);
+    assert.equal(result.data.results[1].status, 'skipped');
+    assert.equal(result.data.results[1].reason, 'no_link');
+  });
+});
+
+test('batch_download respects max_total limit', async () => {
+  await withTempRoot(async tempRoot => {
+    const handler = createSkillHandler({
+      projectRoot: tempRoot,
+      now: () => new Date('2026-03-26T10:00:00Z'),
+      spawn: () => {},
+      fetch: async url => {
+        const requestUrl = new URL(String(url));
+        if (requestUrl.pathname === '/api/web/misc/current-ip') {
+          return new Response(JSON.stringify({ ip: '127.0.0.1' }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+        if (requestUrl.pathname === '/api/public/v1/article') {
+          return new Response(
+            JSON.stringify({
+              base_resp: { ret: 0, err_msg: 'ok' },
+              articles: [
+                { aid: 'a1', itemidx: 1, title: 'One', link: 'https://mp.weixin.qq.com/s/a1' },
+                { aid: 'a2', itemidx: 1, title: 'Two', link: 'https://mp.weixin.qq.com/s/a2' },
+                { aid: 'a3', itemidx: 1, title: 'Three', link: 'https://mp.weixin.qq.com/s/a3' },
+              ],
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } }
+          );
+        }
+        if (requestUrl.pathname === '/api/public/v1/download') {
+          return new Response('content', {
+            status: 200,
+            headers: { 'content-type': 'text/plain; charset=UTF-8' },
+          });
+        }
+        return new Response('not found', { status: 404 });
+      },
+    });
+
+    const result = await handler(
+      {
+        action: 'batch_download',
+        fakeid: 'biz-1',
+        format: 'text',
+        max_total: 2,
+        delay_ms: 0,
+      },
+      createMockContext({ OPENCLAW_AUTH_KEY: 'k1' })
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(result.data.total_found, 3);
+    assert.equal(result.data.total_downloaded, 2);
+    assert.equal(result.data.results.length, 2);
   });
 });
