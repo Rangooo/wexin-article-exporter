@@ -162,7 +162,7 @@ def main():
     # 请替换为你自己的公众号名称和 fakeid
     # fakeid 可通过 search_account 获取
     accounts = {
-        # "示例公众号": "MzAwNTM4NTQ5OQ==",
+        # "示例公众号": "你的fakeid",
     }
     # ========================================
 
